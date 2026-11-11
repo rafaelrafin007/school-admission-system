@@ -38,6 +38,7 @@ public sealed class HoldConfigurationTests
         {
             builder.ConfigureServices(services => services.RemoveHoldExpirationWorker());
             builder.UseSetting("ConnectionStrings:DefaultConnection", "Host=localhost;Database=configuration_only;Username=unused");
+            builder.UseSetting("SCHOOL_ADMISSION_SKIP_MIGRATIONS", "true");
             if (value is not null)
                 builder.UseSetting("HOLD_DURATION_SECONDS", value);
         });

@@ -33,6 +33,7 @@ public sealed class ApiConfigurationTests
         {
             builder.UseSetting("ConnectionStrings:DefaultConnection", "Host=localhost;Database=json_only;Username=unused");
             builder.ConfigureServices(services => services.RemoveHoldExpirationWorker());
+            builder.UseSetting("SCHOOL_ADMISSION_SKIP_MIGRATIONS", "true");
         });
         var options = factory.Services.GetRequiredService<IOptions<JsonOptions>>().Value.JsonSerializerOptions;
 

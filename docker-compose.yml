@@ -1,0 +1,71 @@
+services:
+  db:
+    image: postgres:18
+    container_name: school-admission-compose-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-school_admission}
+      POSTGRES_USER: ${POSTGRES_USER:-school_admission}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+    volumes:
+      - school-admission-compose-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-school_admission} -d ${POSTGRES_DB:-school_admission}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - school-admission-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: school-admission-backend
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=${POSTGRES_DB:-school_admission};Username=${POSTGRES_USER:-school_admission};Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}"
+      HOLD_DURATION_SECONDS: ${HOLD_DURATION_SECONDS:-600}
+      HOLD_EXPIRATION_INTERVAL_SECONDS: ${HOLD_EXPIRATION_INTERVAL_SECONDS:-5}
+      HOLD_EXPIRATION_BATCH_SIZE: ${HOLD_EXPIRATION_BATCH_SIZE:-50}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_HOST_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - school-admission-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: school-admission-frontend
+    ports:
+      - "${FRONTEND_HOST_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - school-admission-net
+
+networks:
+  school-admission-net:
+    driver: bridge
+
+volumes:
+  school-admission-compose-data:
+    name: school-admission-compose-data

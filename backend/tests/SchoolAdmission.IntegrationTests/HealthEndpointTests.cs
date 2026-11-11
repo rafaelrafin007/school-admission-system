@@ -23,6 +23,7 @@ public sealed class HealthEndpointTests : IClassFixture<WebApplicationFactory<Pr
             builder.ConfigureServices(services => services.RemoveHoldExpirationWorker());
             builder.UseSetting("ConnectionStrings:DefaultConnection",
                 "Host=localhost;Database=school_admission_health_test;Username=unused");
+            builder.UseSetting("SCHOOL_ADMISSION_SKIP_MIGRATIONS", "true");
         });
         using var client = configuredFactory.CreateClient();
 

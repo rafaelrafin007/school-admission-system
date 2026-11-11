@@ -22,6 +22,7 @@ public sealed class ClassApiErrorTests
         {
             builder.UseEnvironment(environment);
             builder.UseSetting("ConnectionStrings:DefaultConnection", "Host=localhost;Database=error_test;Username=unused");
+            builder.UseSetting("SCHOOL_ADMISSION_SKIP_MIGRATIONS", "true");
             builder.ConfigureServices(services =>
             {
                 services.RemoveHoldExpirationWorker();
