@@ -8,6 +8,7 @@ using SchoolAdmission.Application.Holds;
 using SchoolAdmission.Application.Holds.Interfaces;
 using SchoolAdmission.Infrastructure.Holds;
 using SchoolAdmission.Infrastructure.Persistence;
+using SchoolAdmission.Infrastructure.Expiration;
 
 namespace SchoolAdmission.Infrastructure;
 
@@ -34,6 +35,9 @@ public static class DependencyInjection
         services.AddSingleton(new HoldSettings(durationSeconds));
         services.AddScoped<IClassRepository, ClassRepository>();
         services.AddScoped<IHoldRepository, HoldRepository>();
+        services.AddSingleton(HoldExpirationSettings.FromConfiguration(configuration));
+        services.AddScoped<IHoldExpirationProcessor, HoldExpirationProcessor>();
+        services.AddHostedService<HoldExpirationWorker>();
         return services;
     }
 }

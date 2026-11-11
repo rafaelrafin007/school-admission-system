@@ -19,8 +19,11 @@ public sealed class HealthEndpointTests : IClassFixture<WebApplicationFactory<Pr
     public async Task GetHealth_ReturnsOkWithHealthyStatus()
     {
         using var configuredFactory = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureServices(services => services.RemoveHoldExpirationWorker());
             builder.UseSetting("ConnectionStrings:DefaultConnection",
-                "Host=localhost;Database=school_admission_health_test;Username=unused"));
+                "Host=localhost;Database=school_admission_health_test;Username=unused");
+        });
         using var client = configuredFactory.CreateClient();
 
         using var response = await client.GetAsync("/health");

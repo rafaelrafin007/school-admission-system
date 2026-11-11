@@ -30,7 +30,10 @@ public sealed class ApiConfigurationTests
     public void ApiJsonOptions_SerializeStatusAsUppercase(HoldStatus status, string expected)
     {
         using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
-            builder.UseSetting("ConnectionStrings:DefaultConnection", "Host=localhost;Database=json_only;Username=unused"));
+        {
+            builder.UseSetting("ConnectionStrings:DefaultConnection", "Host=localhost;Database=json_only;Username=unused");
+            builder.ConfigureServices(services => services.RemoveHoldExpirationWorker());
+        });
         var options = factory.Services.GetRequiredService<IOptions<JsonOptions>>().Value.JsonSerializerOptions;
 
         Assert.Equal($"\"{expected}\"", JsonSerializer.Serialize(status, options));

@@ -35,7 +35,7 @@ public sealed class ClassApiTests : IAsyncLifetime
             _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
                 builder.UseSetting("ConnectionStrings:DefaultConnection", _database.ConnectionString);
-                builder.ConfigureServices(services => services.AddDbContext<ApplicationDbContext>(
+                builder.ConfigureServices(services => services.RemoveHoldExpirationWorker().AddDbContext<ApplicationDbContext>(
                     options => options.AddInterceptors(_commands)));
             });
             _client = _factory.CreateClient();

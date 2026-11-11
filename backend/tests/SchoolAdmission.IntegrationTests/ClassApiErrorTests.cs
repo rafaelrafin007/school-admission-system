@@ -24,6 +24,7 @@ public sealed class ClassApiErrorTests
             builder.UseSetting("ConnectionStrings:DefaultConnection", "Host=localhost;Database=error_test;Username=unused");
             builder.ConfigureServices(services =>
             {
+                services.RemoveHoldExpirationWorker();
                 services.RemoveAll<IClassRepository>();
                 services.AddScoped<IClassRepository, FailingRepository>();
             });

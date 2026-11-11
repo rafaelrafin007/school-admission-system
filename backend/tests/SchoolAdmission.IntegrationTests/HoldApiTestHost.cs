@@ -19,6 +19,8 @@ public sealed class HoldApiTestHost : IAsyncLifetime
     public PostgreSqlTestDatabase Database { get; } = new();
     public string ApplicationName { get; } = $"hold-tests-{Guid.NewGuid():N}";
     public string? DurationSeconds { get; init; }
+    public bool EnableExpirationWorker { get; init; }
+    public Action<IServiceCollection>? ConfigureServices { get; init; }
     public WebApplicationFactory<Program> Factory { get; private set; } = null!;
     public HttpClient Client { get; private set; } = null!;
     public InsertFailureInterceptor InsertFailure { get; } = new();
@@ -40,8 +42,13 @@ public sealed class HoldApiTestHost : IAsyncLifetime
                 builder.UseSetting("ConnectionStrings:DefaultConnection", connection.ConnectionString);
                 if (DurationSeconds is not null)
                     builder.UseSetting("HOLD_DURATION_SECONDS", DurationSeconds);
-                builder.ConfigureServices(services => services.AddDbContext<ApplicationDbContext>(
-                    options => options.UseNpgsql(_dataSource).AddInterceptors(InsertFailure, CommitCancellation)));
+                builder.ConfigureServices(services =>
+                {
+                    if (!EnableExpirationWorker) services.RemoveHoldExpirationWorker();
+                    services.AddDbContext<ApplicationDbContext>(
+                        options => options.UseNpgsql(_dataSource).AddInterceptors(InsertFailure, CommitCancellation));
+                    ConfigureServices?.Invoke(services);
+                });
             });
             Client = Factory.CreateClient();
         }

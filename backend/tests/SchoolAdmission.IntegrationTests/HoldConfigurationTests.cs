@@ -36,6 +36,7 @@ public sealed class HoldConfigurationTests
     private static WebApplicationFactory<Program> CreateFactory(string? value) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
+            builder.ConfigureServices(services => services.RemoveHoldExpirationWorker());
             builder.UseSetting("ConnectionStrings:DefaultConnection", "Host=localhost;Database=configuration_only;Username=unused");
             if (value is not null)
                 builder.UseSetting("HOLD_DURATION_SECONDS", value);

@@ -28,6 +28,18 @@ when absent. It must be a positive 32-bit integer; blank, nonnumeric, zero, nega
 and out-of-range values fail API startup. For example, set
 `$env:HOLD_DURATION_SECONDS = '600'` before starting the API.
 
+Automatic expiration has separate settings:
+
+| Environment variable | Default | Meaning |
+| --- | --- | --- |
+| `HOLD_EXPIRATION_INTERVAL_SECONDS` | `5` | Delay between completed processing cycles, including failed cycles |
+| `HOLD_EXPIRATION_BATCH_SIZE` | `50` | Maximum candidate classes per cycle |
+
+Both settings must be positive 32-bit integers. Missing values use the defaults;
+blank, nonnumeric, fractional, zero, negative and out-of-range values fail startup.
+Long intervals are split into cancellation-aware delays to stay within runtime timer
+limits. These settings do not change the 600-second default reservation lifetime.
+
 ## Migrations
 
 Run these commands from `backend/` against your intended development database:
@@ -145,5 +157,57 @@ after SQL updates and before commit to verify request-cancellation rollback. The
 also verify cancellation while waiting for a class lock and rollback of creation's lazy
 expiration plus insert. Cleanup is best-effort as described above.
 
-Global background expiration is deferred to Task 07. Multi-process deployment verification
-remains separate from these single-host HTTP concurrency tests.
+## Automatic hold expiration
+
+The API registers one `HoldExpirationWorker` through Infrastructure. Its BackgroundService
+starts an immediate cycle, then waits for the configured interval after each cycle.
+Cycles never overlap within one worker. Each cycle creates an asynchronous DI scope for
+the processor and DbContext, and disposes that scope before waiting.
+
+Candidate discovery reads at most the configured number of distinct class IDs, oldest
+deadline first, without acquiring hold row locks:
+
+```sql
+SELECT class_id
+FROM admission_holds
+WHERE status = 'HELD' AND expires_at <= statement_timestamp()
+GROUP BY class_id
+ORDER BY MIN(expires_at), class_id
+LIMIT @batchSize;
+```
+
+Each candidate is processed in its own READ COMMITTED transaction. The processor locks
+the class with a parameterized SELECT FOR UPDATE, obtains clock_timestamp() after the
+lock, and bulk-updates only that class's HELD rows whose expires_at is at or before that
+instant. The UPDATE acquires hold row locks after the class lock. It commits before
+moving to the next class. Missing/stale candidates are safe no-ops.
+
+The bulk predicate implements the same state and deadline rule as AdmissionHold.Expire.
+It avoids materializing individual holds and changes only status, retaining all history
+and timestamps. Work is bounded by candidate classes, not a separate hold-row limit; a
+class's eligible holds are updated together. There is one discovery query plus a fixed
+set of lock/time/update statements per selected class, with no per-hold queries.
+
+Multiple application instances may discover the same class. PostgreSQL serializes their
+class transactions; each processor rechecks eligibility using fresh time after acquiring
+the lock, so a later processor safely updates zero already-processed rows. The same lock
+order coordinates with creation, confirmation and cancellation. Tests exercise independent
+processors/contexts, not a deployment of two separate backend processes.
+
+A failed class transaction is disposed and the current cycle stops. Previously committed
+classes stay committed. The worker logs the failure and waits for the next normal interval
+before rediscovering remaining work. Shutdown cancels database operations and delays without
+logging expected cancellation as an error. Scope/transaction cleanup is best-effort during
+process crashes or database outages; uncommitted work is rolled back by PostgreSQL when the
+connection ends, and later cycles rediscover eligible rows.
+
+Cycle counts and duration are structured Debug logs. Errors include exception type and,
+for class processing, class ID; worker logs omit provider messages, student IDs and credentials.
+
+Background expiration complements lazy expiration during reservation creation and lifecycle
+operations. Reads still derive effective EXPIRED status without writes. Therefore read-side
+seat counts and confirmation deadlines do not depend on how quickly a background cycle runs.
+Worker-enabled tests verify automatic expiration without student requests, retry after an
+injected transient failure, bounded cycles, competing processors and shutdown during an
+actual PostgreSQL lock wait. API-only regression fixtures disable this one hosted worker
+to test lazy expiration deterministically; they retain their original assertions.
