@@ -15,12 +15,14 @@ namespace SchoolAdmission.IntegrationTests;
 
 public sealed class HoldApiTestHost : IAsyncLifetime
 {
+    private NpgsqlDataSource? _dataSource;
     public PostgreSqlTestDatabase Database { get; } = new();
     public string ApplicationName { get; } = $"hold-tests-{Guid.NewGuid():N}";
     public string? DurationSeconds { get; init; }
     public WebApplicationFactory<Program> Factory { get; private set; } = null!;
     public HttpClient Client { get; private set; } = null!;
     public InsertFailureInterceptor InsertFailure { get; } = new();
+    public CommitCancellationInterceptor CommitCancellation { get; } = new();
 
     public async Task InitializeAsync()
     {
@@ -31,14 +33,15 @@ public sealed class HoldApiTestHost : IAsyncLifetime
         try
         {
             var connection = new NpgsqlConnectionStringBuilder(Database.ConnectionString)
-                { ApplicationName = ApplicationName, MaxPoolSize = 20 };
+                { ApplicationName = ApplicationName, Pooling = true, MaxPoolSize = 20 };
+            _dataSource = NpgsqlDataSource.Create(connection.ConnectionString);
             Factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
                 builder.UseSetting("ConnectionStrings:DefaultConnection", connection.ConnectionString);
                 if (DurationSeconds is not null)
                     builder.UseSetting("HOLD_DURATION_SECONDS", DurationSeconds);
                 builder.ConfigureServices(services => services.AddDbContext<ApplicationDbContext>(
-                    options => options.AddInterceptors(InsertFailure)));
+                    options => options.UseNpgsql(_dataSource).AddInterceptors(InsertFailure, CommitCancellation)));
             });
             Client = Factory.CreateClient();
         }
@@ -58,7 +61,11 @@ public sealed class HoldApiTestHost : IAsyncLifetime
             if (Factory is not null)
                 await Factory.DisposeAsync();
         }
-        finally { await Database.DisposeAsync(); }
+        finally
+        {
+            try { if (_dataSource is not null) await _dataSource.DisposeAsync(); }
+            finally { await Database.DisposeAsync(); }
+        }
     }
 
     public async Task<CreateClassResponse> CreateClassAsync(int capacity)
@@ -74,6 +81,48 @@ public sealed class HoldApiTestHost : IAsyncLifetime
         if (studentId is not null)
             request.Headers.TryAddWithoutValidation("X-Student-Id", studentId);
         return await (client ?? Client).SendAsync(request);
+    }
+
+    public async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, string? studentId = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(method, path);
+        if (studentId is not null) request.Headers.TryAddWithoutValidation("X-Student-Id", studentId);
+        return await Client.SendAsync(request, cancellationToken);
+    }
+
+    public async Task WaitForNoTransactionsAsync()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        await using var observer = Database.CreateContext();
+        while (await observer.Database.SqlQuery<int>($"""
+            SELECT count(*)::integer AS "Value" FROM pg_stat_activity
+            WHERE application_name = {ApplicationName} AND xact_start IS NOT NULL
+            """).SingleAsync(timeout.Token) != 0)
+            await Task.Delay(20, timeout.Token);
+    }
+
+    public sealed class CommitCancellationInterceptor : DbTransactionInterceptor
+    {
+        private int _armed;
+        public TaskCompletionSource Reached { get; private set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Arm()
+        {
+            Reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Interlocked.Exchange(ref _armed, 1);
+        }
+
+        public override async ValueTask<InterceptionResult> TransactionCommittingAsync(DbTransaction transaction,
+            TransactionEventData eventData, InterceptionResult result, CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Exchange(ref _armed, 0) == 1)
+            {
+                Reached.TrySetResult();
+                await Task.Delay(TimeSpan.FromSeconds(20), cancellationToken);
+                throw new TimeoutException("The test did not cancel the request before commit.");
+            }
+            return result;
+        }
     }
 
     public async Task<string> SeedHoldAsync(string classId, string studentId, string status, int expirySeconds)

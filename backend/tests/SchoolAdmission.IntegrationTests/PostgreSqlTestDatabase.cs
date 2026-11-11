@@ -22,7 +22,8 @@ public sealed class PostgreSqlTestDatabase : IAsyncLifetime
     private readonly string _schema = $"admission_test_{Guid.NewGuid():N}";
     private bool _schemaCreated;
 
-    public string ConnectionString => new NpgsqlConnectionStringBuilder(_connectionString) { SearchPath = _schema }.ConnectionString;
+    // Observer/migration contexts need no persistent per-schema pool. API fixtures own their request pools.
+    public string ConnectionString => new NpgsqlConnectionStringBuilder(_connectionString) { SearchPath = _schema, Pooling = false }.ConnectionString;
 
     public ApplicationDbContext CreateContext()
     {

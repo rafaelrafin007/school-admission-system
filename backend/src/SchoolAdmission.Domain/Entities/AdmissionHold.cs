@@ -36,6 +36,39 @@ public sealed class AdmissionHold
         ExpiresAt = expiresAt;
     }
 
+    public bool Confirm(DateTime currentTime)
+    {
+        RequireUtc(currentTime);
+        if (Status == HoldStatus.Confirmed) return true;
+        if (Status != HoldStatus.Held || currentTime >= ExpiresAt) return false;
+        Status = HoldStatus.Confirmed;
+        ConfirmedAt = currentTime;
+        return true;
+    }
+
+    public bool Cancel(DateTime currentTime)
+    {
+        RequireUtc(currentTime);
+        if (Status != HoldStatus.Held || currentTime >= ExpiresAt) return false;
+        Status = HoldStatus.Cancelled;
+        CancelledAt = currentTime;
+        return true;
+    }
+
+    public bool Expire(DateTime currentTime)
+    {
+        RequireUtc(currentTime);
+        if (Status != HoldStatus.Held || currentTime < ExpiresAt) return false;
+        Status = HoldStatus.Expired;
+        return true;
+    }
+
+    private static void RequireUtc(DateTime currentTime)
+    {
+        if (currentTime.Kind != DateTimeKind.Utc)
+            throw new ArgumentException("The timestamp must be UTC.", nameof(currentTime));
+    }
+
     public string Id { get; private set; } = string.Empty;
     public string ClassId { get; private set; } = string.Empty;
     public string StudentId { get; private set; } = string.Empty;

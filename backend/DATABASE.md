@@ -71,6 +71,10 @@ If migration and cleanup both fail, the original exception is preserved with the
 exception attached in its Data dictionary. A failed connection fails the tests; it is not
 treated as a pass.
 
+Observer/migration contexts do not pool connections per schema. Hold API fixtures own
+their bounded Npgsql data source and dispose it after requests finish, preventing idle
+connections from accumulating across isolated tests.
+
 Use a disposable Docker PostgreSQL 18 instance for these checks; no Compose configuration
 is introduced in this task. Remove only the verification container you created.
 
@@ -99,8 +103,10 @@ READ COMMITTED transaction: lock the class row with SELECT FOR UPDATE, read
 `clock_timestamp()` after acquiring the lock, expire this class's overdue HELD rows,
 check duplicate applications, count occupied seats, insert a HELD row, and commit.
 The same database instant supplies creation time, the deadline, and expiration/count
-predicates. Rejected or failed attempts roll back the whole transaction, including any
-lazy expiration updates. Only the active student/class unique-index violation is mapped
+predicates. Attempts rejected before commit roll back the whole transaction, including any
+lazy expiration updates. A connection failure or cancellation during commit can leave the
+caller uncertain whether the transaction committed; atomicity does not guarantee response delivery.
+Only the active student/class unique-index violation is mapped
 to a duplicate conflict; unexpected database errors receive a generic server response.
 
 All future confirmation, cancellation, and expiration writers must follow the same
@@ -110,4 +116,34 @@ contention through HTTP with independent request scopes and pooled connections. 
 test pool is bounded to avoid exhausting PostgreSQL connections. This is not a claim
 that the optional separate-process multi-instance deployment bonus is complete.
 
-Global background expiration and the remaining hold endpoints are not implemented yet.
+## Hold lifecycle
+
+- `GET /holds/{holdId}` requires no student header and returns only holdId, classId,
+  status and expiresAt; missing holds return 404.
+- `GET /me/holds` requires the validated student header and returns only that student's
+  history, newest first (ID descending breaks creation-time ties), with className included.
+  Each GET uses one untracked SQL projection and statement_timestamp(); overdue HELD rows
+  appear as EXPIRED without changing stored data or acquiring row locks.
+- `POST /holds/{holdId}/confirm` and `DELETE /holds/{holdId}` require ownership.
+  Unknown holds return 404, another student's hold returns a generic 403, and invalid
+  states return 409. Missing/invalid/multiple student header values return 400.
+- Confirmation returns 200 with only holdId and status. An owner repeating confirmation
+  receives success without changing confirmed_at. Ownership is checked before idempotency.
+- Cancellation returns 204 with no body, stores CANCELLED and cancelled_at, and preserves
+  history. Confirmed, expired and already cancelled applications cannot be cancelled (409).
+- Each mutation starts READ COMMITTED, resolves the immutable class ID without a hold
+  lock, locks the class first and the hold second with SELECT FOR UPDATE, then reads
+  clock_timestamp(). HELD rows at or beyond the deadline are persisted as EXPIRED and
+  committed before returning 409. Successful changes also commit before returning.
+- Domain Confirm, Cancel and Expire methods keep setters private and enforce UTC and
+  expiration boundaries. CONFIRMED and CANCELLED timestamps are set only on their first
+  valid transitions. Expiration does not alter those timestamps.
+
+Lifecycle concurrency tests use independent HTTP scopes, PostgreSQL lock-wait observation,
+and separate contexts to inspect persisted state. A test-only transaction interceptor pauses
+after SQL updates and before commit to verify request-cancellation rollback. These tests
+also verify cancellation while waiting for a class lock and rollback of creation's lazy
+expiration plus insert. Cleanup is best-effort as described above.
+
+Global background expiration is deferred to Task 07. Multi-process deployment verification
+remains separate from these single-host HTTP concurrency tests.

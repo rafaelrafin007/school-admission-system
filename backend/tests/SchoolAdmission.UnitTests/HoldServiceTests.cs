@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using SchoolAdmission.Application.Holds;
 using SchoolAdmission.Application.Holds.Interfaces;
+using SchoolAdmission.Application.Holds.DTOs;
 
 namespace SchoolAdmission.UnitTests;
 
@@ -58,6 +59,10 @@ public sealed class HoldServiceTests
 
     private sealed class RecordingRepository : IHoldRepository
     {
+        public Task<HoldDetailsResponse?> GetByIdAsync(string holdId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<MyHoldResponse>> GetForStudentAsync(string studentId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<HoldTransitionOutcome> ConfirmAsync(string holdId, string studentId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<HoldTransitionOutcome> CancelAsync(string holdId, string studentId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public string? StudentId { get; private set; }
         public string? ClassId { get; private set; }
         public CancellationToken CancellationToken { get; private set; }
