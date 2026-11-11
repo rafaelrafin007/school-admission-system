@@ -22,11 +22,12 @@ public sealed class PostgreSqlTestDatabase : IAsyncLifetime
     private readonly string _schema = $"admission_test_{Guid.NewGuid():N}";
     private bool _schemaCreated;
 
+    public string ConnectionString => new NpgsqlConnectionStringBuilder(_connectionString) { SearchPath = _schema }.ConnectionString;
+
     public ApplicationDbContext CreateContext()
     {
-        var connection = new NpgsqlConnectionStringBuilder(_connectionString) { SearchPath = _schema };
         return new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(connection.ConnectionString, options => options.MigrationsHistoryTable("__EFMigrationsHistory", _schema))
+            .UseNpgsql(ConnectionString, options => options.MigrationsHistoryTable("__EFMigrationsHistory", _schema))
             .Options);
     }
 

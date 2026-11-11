@@ -1,6 +1,6 @@
 # Database development
 
-The persistence model uses PostgreSQL, EF Core 10.0.14, and the Npgsql EF provider
+The supported and tested database target is PostgreSQL 18. The persistence model uses EF Core 10.0.14 and the Npgsql EF provider
 10.0.3. The repository's local `dotnet-ef` tool is pinned to 10.0.14.
 
 ## Configuration
@@ -46,7 +46,7 @@ The API does not automatically migrate on startup.
 ## Verification
 
 `dotnet test` runs the domain, EF model, configuration, JSON serialization, and health
-checks without requiring PostgreSQL. The six PostgreSQL tests are explicitly skipped
+checks without requiring PostgreSQL. PostgreSQL schema and class API tests are explicitly skipped
 when `SCHOOL_ADMISSION_TEST_CONNECTION` is unset.
 
 To run all tests, point the connection variable at a disposable PostgreSQL database,
@@ -62,7 +62,7 @@ real migration, checks database constraints and EF round trips, and drops only i
 schema. Its database user needs permission to create schemas. It never drops a database
 or clears existing tables. A failed connection fails the tests; it is not treated as a pass.
 
-Use a disposable Docker PostgreSQL instance for these checks; no Compose configuration
+Use a disposable Docker PostgreSQL 18 instance for these checks; no Compose configuration
 is introduced in this task. Remove only the verification container you created.
 
 ## Schema decisions
@@ -78,5 +78,7 @@ is introduced in this task. Remove only the verification container you created.
   expiration scans. Class deletion is restricted while any hold references it.
 - `VARCHAR(17)` limits student identifier length; it does not impose an exact-length or
   digits-only rule. No such additional business rule is introduced here.
-- Seat totals remain derived. Locking, authoritative database-time reads, expiration,
-  and admission state transitions belong to later tasks.
+- Class GET endpoints derive seat statistics in one grouped SQL statement using
+  `statement_timestamp()` to exclude expired HELD rows, even before a status transition.
+  No counters are stored. Locking, expiration processing, and admission state transitions
+  belong to later tasks.
