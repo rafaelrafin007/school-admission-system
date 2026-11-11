@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using SchoolAdmission.Api.Errors;
 using SchoolAdmission.Application.Classes;
+using SchoolAdmission.Application.Holds;
 using SchoolAdmission.Infrastructure;
 
 namespace SchoolAdmission.Api;
@@ -14,6 +15,7 @@ public class Program
 
         builder.Services.AddInfrastructure(builder.Configuration);
         builder.Services.AddScoped<ClassService>();
+        builder.Services.AddScoped<HoldService>();
         builder.Services.AddProblemDetails();
         builder.Services.AddExceptionHandler<ApiExceptionHandler>();
         builder.Services.AddControllers().AddJsonOptions(options =>

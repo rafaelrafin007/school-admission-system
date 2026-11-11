@@ -40,9 +40,10 @@ public sealed class ClassApiTests : IAsyncLifetime
             });
             _client = _factory.CreateClient();
         }
-        catch
+        catch (Exception originalException)
         {
-            await DisposeAsync();
+            try { await DisposeAsync(); }
+            catch (Exception cleanupException) { originalException.Data["CleanupException"] = cleanupException; }
             throw;
         }
     }

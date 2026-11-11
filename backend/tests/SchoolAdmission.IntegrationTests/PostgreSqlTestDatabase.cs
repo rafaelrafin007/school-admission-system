@@ -48,9 +48,16 @@ public sealed class PostgreSqlTestDatabase : IAsyncLifetime
             await using var context = CreateContext();
             await context.Database.MigrateAsync();
         }
-        catch
+        catch (Exception originalException)
         {
-            await DisposeAsync();
+            try
+            {
+                await DisposeAsync();
+            }
+            catch (Exception cleanupException)
+            {
+                originalException.Data["CleanupException"] = cleanupException;
+            }
             throw;
         }
     }

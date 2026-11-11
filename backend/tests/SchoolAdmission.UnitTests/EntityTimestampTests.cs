@@ -13,7 +13,11 @@ public sealed class EntityTimestampTests
         var utc = DateTime.SpecifyKind(invalid, DateTimeKind.Utc);
 
         Assert.Throws<ArgumentException>(() => new AdmissionClass("c_1", "Class 6 - Morning", 10, invalid));
-        Assert.Throws<ArgumentException>(() => new AdmissionHold("h_1", "c_1", "00152691234567890", invalid, utc));
-        Assert.Throws<ArgumentException>(() => new AdmissionHold("h_1", "c_1", "00152691234567890", utc, invalid));
+        var invalidCreation = Assert.Throws<ArgumentException>(() =>
+            new AdmissionHold("h_1", "c_1", "00152691234567890", invalid, utc.AddSeconds(600)));
+        Assert.Equal("createdAt", invalidCreation.ParamName);
+        var invalidExpiration = Assert.Throws<ArgumentException>(() =>
+            new AdmissionHold("h_1", "c_1", "00152691234567890", utc, invalid.AddSeconds(600)));
+        Assert.Equal("expiresAt", invalidExpiration.ParamName);
     }
 }

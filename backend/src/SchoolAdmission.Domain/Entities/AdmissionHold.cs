@@ -11,6 +11,10 @@ public sealed class AdmissionHold
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(classId);
         ArgumentException.ThrowIfNullOrWhiteSpace(studentId);
+        if (!id.StartsWith("h_", StringComparison.Ordinal) || id.Length <= 2 || id.Length > 40)
+        {
+            throw new ArgumentException("Hold ID must start with h_ and contain 3 to 40 characters.", nameof(id));
+        }
         if (createdAt.Kind != DateTimeKind.Utc)
         {
             throw new ArgumentException("The timestamp must be UTC.", nameof(createdAt));
@@ -18,6 +22,10 @@ public sealed class AdmissionHold
         if (expiresAt.Kind != DateTimeKind.Utc)
         {
             throw new ArgumentException("The timestamp must be UTC.", nameof(expiresAt));
+        }
+        if (expiresAt <= createdAt)
+        {
+            throw new ArgumentException("Expiration must be later than creation.", nameof(expiresAt));
         }
 
         Id = id;
