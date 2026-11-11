@@ -1,7 +1,8 @@
-# Database development
+# Database Development
 
-The supported and tested database target is PostgreSQL 18. The persistence model uses EF Core 10.0.14 and the Npgsql EF provider
-10.0.3. The repository's local `dotnet-ef` tool is pinned to 10.0.14.
+The supported and tested database target is PostgreSQL 18. The persistence model uses
+EF Core 10.0.14 and the Npgsql EF provider 10.0.3. The repository's local `dotnet-ef`
+tool is pinned to 10.0.14.
 
 ## Configuration
 
@@ -31,7 +32,7 @@ and out-of-range values fail API startup. For example, set
 Automatic expiration has separate settings:
 
 | Environment variable | Default | Meaning |
-| --- | --- | --- |
+|---|---|---|
 | `HOLD_EXPIRATION_INTERVAL_SECONDS` | `5` | Delay between completed processing cycles, including failed cycles |
 | `HOLD_EXPIRATION_BATCH_SIZE` | `50` | Maximum candidate classes per cycle |
 
@@ -42,29 +43,35 @@ limits. These settings do not change the 600-second default reservation lifetime
 
 ## Migrations
 
-Run these commands from `backend/` against your intended development database:
+EF Core migrations are applied automatically when the backend starts. The backend waits
+for PostgreSQL to report healthy, runs `Database.Migrate()`, and only then accepts HTTP
+traffic. Migration failures stop backend startup clearly. No manual `dotnet ef database
+update` is required for Docker Compose deployment.
+
+For local development, apply migrations from `backend/`:
 
 ```powershell
 dotnet tool restore
 dotnet ef database update --project src/SchoolAdmission.Infrastructure --startup-project src/SchoolAdmission.Infrastructure
 ```
 
-The Infrastructure design-time factory reads the same environment variable, so API
-does not need the EF Design package. To generate a later migration, set that variable
-and run:
+The Infrastructure design-time factory reads the same environment variable. To generate
+a later migration, set that variable and run:
 
 ```powershell
 dotnet ef migrations add <MigrationName> --project src/SchoolAdmission.Infrastructure --startup-project src/SchoolAdmission.Infrastructure --output-dir Persistence/Migrations
 ```
 
 Generating migrations does not require a database connection. Applying them does.
-The API does not automatically migrate on startup.
+
+Docker Compose uses a persistent named volume (`school-admission-compose-data`) and
+applies migrations on backend startup without manual intervention.
 
 ## Verification
 
 `dotnet test` runs the domain, EF model, configuration, JSON serialization, and health
-checks without requiring PostgreSQL. PostgreSQL schema, class API, and hold API/concurrency tests are explicitly skipped
-when `SCHOOL_ADMISSION_TEST_CONNECTION` is unset.
+checks without requiring PostgreSQL. PostgreSQL schema, class API, and hold API/concurrency
+tests are explicitly skipped when `SCHOOL_ADMISSION_TEST_CONNECTION` is unset.
 
 To run all tests, point the connection variable at a disposable PostgreSQL database,
 then run from `backend/`:
@@ -87,10 +94,10 @@ Observer/migration contexts do not pool connections per schema. Hold API fixture
 their bounded Npgsql data source and dispose it after requests finish, preventing idle
 connections from accumulating across isolated tests.
 
-Use a disposable Docker PostgreSQL 18 instance for these checks; no Compose configuration
-is introduced in this task. Remove only the verification container you created.
+Use a disposable Docker PostgreSQL 18 instance for these checks. Remove only the
+verification container you created.
 
-## Schema decisions
+## Schema Decisions
 
 - The two business tables are `admission_classes` and `admission_holds`.
 - IDs are supplied strings; timestamps are supplied UTC `DateTime` values mapped to
@@ -108,7 +115,7 @@ is introduced in this task. Remove only the verification container you created.
   `statement_timestamp()` to exclude expired HELD rows, even before a status transition.
   No counters are stored.
 
-## Atomic hold creation
+## Atomic Hold Creation
 
 `POST /classes/{classId}/holds` has no request body. The operation runs in one explicit
 READ COMMITTED transaction: lock the class row with SELECT FOR UPDATE, read
@@ -128,7 +135,7 @@ contention through HTTP with independent request scopes and pooled connections. 
 test pool is bounded to avoid exhausting PostgreSQL connections. This is not a claim
 that the optional separate-process multi-instance deployment bonus is complete.
 
-## Hold lifecycle
+## Hold Lifecycle
 
 - `GET /holds/{holdId}` requires no student header and returns only holdId, classId,
   status and expiresAt; missing holds return 404.
@@ -157,7 +164,7 @@ after SQL updates and before commit to verify request-cancellation rollback. The
 also verify cancellation while waiting for a class lock and rollback of creation's lazy
 expiration plus insert. Cleanup is best-effort as described above.
 
-## Automatic hold expiration
+## Automatic Hold Expiration
 
 The API registers one `HoldExpirationWorker` through Infrastructure. Its BackgroundService
 starts an immediate cycle, then waits for the configured interval after each cycle.

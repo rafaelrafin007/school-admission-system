@@ -46,6 +46,9 @@ PostgreSQL 18 container
 Persistent named Docker volume
 ```
 
+Browser requests to `/classes`, `/holds`, `/me`, and `/health` are forwarded by Nginx to
+the backend on the same origin. No Docker-internal hostnames appear in browser JavaScript.
+
 ## Folder Structure
 
 ```text
@@ -66,7 +69,7 @@ school-admission-system/
 └── frontend/
     ├── Dockerfile              # Multi-stage Node 22 + Nginx build
     ├── .dockerignore
-    ├── nginx.conf              # Nginx reverse proxy + SPA fallback
+    ├── nginx.conf              # Nginx reverse proxy + SPA fallback (envsubst template)
     ├── package.json
     ├── index.html
     ├── vite.config.ts
@@ -81,7 +84,7 @@ school-admission-system/
 - Docker Compose (v2)
 - No .NET SDK, Node.js, or PostgreSQL installation required on the host
 
-## Quick Start
+## Quick Start (Docker Compose)
 
 ```powershell
 # 1. Clone the repository
@@ -109,9 +112,10 @@ docker compose ps
 | Backend API (direct) | http://localhost:8080 |
 | Backend health | http://localhost:8080/health |
 
-> If port 8080 is occupied on your host, set `BACKEND_HOST_PORT=8081` in `.env` and access
-> the backend at `http://localhost:8081`. The frontend always proxies API calls internally,
-> so browser URLs are unaffected.
+If port 8080 is occupied on your host (e.g. by an unrelated Oracle service), set
+`BACKEND_HOST_PORT=8081` in `.env`. The internal container port remains 8080; only the
+host mapping changes. The frontend always proxies API calls internally, so browser URLs
+are unaffected.
 
 ## Environment Configuration
 
@@ -124,10 +128,15 @@ Copy `.env.example` to `.env` and adjust:
 | `POSTGRES_PASSWORD` | `change-this-local-password` | Database password (change before use) |
 | `BACKEND_HOST_PORT` | `8080` | Host port for backend API |
 | `FRONTEND_HOST_PORT` | `3000` | Host port for frontend |
+| `FRONTEND_API_UPSTREAM` | `http://backend:8080` | Internal Nginx upstream URL for backend API |
 | `ASPNETCORE_ENVIRONMENT` | `Production` | ASP.NET Core environment |
 | `HOLD_DURATION_SECONDS` | `600` | Reservation lifetime in seconds |
 | `HOLD_EXPIRATION_INTERVAL_SECONDS` | `5` | Expiration worker interval |
 | `HOLD_EXPIRATION_BATCH_SIZE` | `50` | Expiration batch size |
+
+`FRONTEND_API_UPSTREAM` is substituted into the Nginx configuration at container startup.
+Do not set it to a `localhost` URL — browser JavaScript cannot reach Docker-internal
+hostnames from outside the container network.
 
 ## API Endpoints
 
@@ -145,14 +154,12 @@ All backend endpoints are accessible through the frontend at the same origin:
 | `DELETE` | `/holds/{holdId}` | Cancel a hold (header: `X-Student-Id`) |
 | `GET` | `/me/holds` | Get student's application history (header: `X-Student-Id`) |
 
-Browser requests to `/classes`, `/holds`, `/me`, and `/health` are forwarded by Nginx
-to the backend on the same origin — no Docker-internal hostnames are used.
-
 ## Database Migrations
 
 EF Core migrations are applied automatically when the backend starts. The backend waits
-for PostgreSQL to be healthy, runs `Database.Migrate()`, and only then accepts HTTP
-traffic. No manual `dotnet ef database update` is required.
+for PostgreSQL to report healthy, runs `Database.Migrate()`, and only then accepts HTTP
+traffic. Migration failures stop backend startup clearly. No manual `dotnet ef database
+update` is required.
 
 ## Persistent Storage
 
@@ -205,22 +212,6 @@ docker compose ps
 docker compose up -d --build
 ```
 
-### Port 8080 Conflict
-
-If port 8080 is occupied by another service (e.g. Oracle), add to your local `.env`:
-
-```text
-BACKEND_HOST_PORT=8081
-```
-
-Then restart:
-
-```powershell
-docker compose up -d --build
-```
-
-The backend remains on internal port 8080; only the host mapping changes.
-
 ## Shutdown
 
 ```powershell
@@ -238,6 +229,7 @@ docker compose down --rmi all
 ## Security Notes
 
 - The admin interface is an assignment-level demo without authentication.
+- It is not protected by real authorization and should not be used in production as-is.
 - Change `POSTGRES_PASSWORD` from the default before any non-evaluation use.
 - No real credentials, private keys, or certificates are stored in the repository.
 - See `AI_USAGE.md` for AI assistance disclosure and `ASSUMPTIONS.md` for design decisions.
