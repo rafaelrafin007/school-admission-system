@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using SchoolAdmission.Api;
 
@@ -17,7 +18,10 @@ public sealed class HealthEndpointTests : IClassFixture<WebApplicationFactory<Pr
     [Fact]
     public async Task GetHealth_ReturnsOkWithHealthyStatus()
     {
-        using var client = _factory.CreateClient();
+        using var configuredFactory = _factory.WithWebHostBuilder(builder =>
+            builder.UseSetting("ConnectionStrings:DefaultConnection",
+                "Host=localhost;Database=school_admission_health_test;Username=unused"));
+        using var client = configuredFactory.CreateClient();
 
         using var response = await client.GetAsync("/health");
 
